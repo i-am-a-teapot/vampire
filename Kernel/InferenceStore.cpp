@@ -28,6 +28,7 @@
 #include "Shell/Statistics.hpp"
 #include "Shell/UIHelper.hpp"
 #include "Shell/SMTCheck.hpp"
+#include "Shell/LeanProof.hpp"
 
 #include "Parse/TPTP.hpp"
 
@@ -191,7 +192,7 @@ std::string getQuantifiedStr(Unit* u, List<unsigned>* nonQuantified=0)
 struct InferenceStore::ProofPrinter
 {
   ProofPrinter(std::ostream& out, InferenceStore* is)
-  : _is(is), out(out)
+      : _is(is), out(out)
   {
     outputAxiomNames=env.options->outputAxiomNames();
   }
@@ -277,8 +278,8 @@ protected:
         auto *extra = env.proofExtra.find(cs);
         if(extra)
           out
-            << (first ? ' ' : ',')
-            << *extra;
+              << (first ? ' ' : ',')
+              << *extra;
       }
 
       out << "]" << endl;
@@ -289,7 +290,7 @@ protected:
   ostream &out;
   bool outputAxiomNames;
 
-private:
+protected:
   struct CompareUnits {
     bool operator()(Unit *l, Unit *r) const { return l->number() < r->number(); }
   };
@@ -365,7 +366,7 @@ protected:
       }
       level--;
       //cout << "level is " << level << endl;
-      
+
       if(level > max_theory_clause_depth){
         max_theory_clause_depth=level;
       }
@@ -381,7 +382,7 @@ protected:
 
 struct InferenceStore::TPTPProofPrinter
 : public InferenceStore::ProofPrinter
-{
+  {
   TPTPProofPrinter(std::ostream& out, InferenceStore* is)
   : ProofPrinter(out, is) {
     splitPrefix = Saturation::Splitter::splPrefix;
@@ -401,26 +402,26 @@ protected:
   std::string getRole(InferenceRule rule, UnitInputType origin)
   {
     switch(rule) {
-    case InferenceRule::INPUT:
+      case InferenceRule::INPUT:
       if (origin==UnitInputType::CONJECTURE) {
-        return "conjecture";
+          return "conjecture";
       } else if (origin==UnitInputType::NEGATED_CONJECTURE) {
-        return "negated_conjecture";
+          return "negated_conjecture";
       } else {
-        return "axiom";
-      }
-    case InferenceRule::NEGATED_CONJECTURE:
-      return "negated_conjecture";
-    case InferenceRule::AVATAR_DEFINITION:
-    case InferenceRule::FUNCTION_DEFINITION:
-    case InferenceRule::FOOL_ITE_DEFINITION:
-    case InferenceRule::FOOL_LET_DEFINITION:
-    case InferenceRule::FOOL_FORMULA_DEFINITION:
-    case InferenceRule::FOOL_MATCH_DEFINITION:
-    case InferenceRule::GENERAL_SPLITTING_COMPONENT:
-      return "definition";
-    default:
-      return "plain";
+          return "axiom";
+        }
+      case InferenceRule::NEGATED_CONJECTURE:
+        return "negated_conjecture";
+      case InferenceRule::AVATAR_DEFINITION:
+      case InferenceRule::FUNCTION_DEFINITION:
+      case InferenceRule::FOOL_ITE_DEFINITION:
+      case InferenceRule::FOOL_LET_DEFINITION:
+      case InferenceRule::FOOL_FORMULA_DEFINITION:
+      case InferenceRule::FOOL_MATCH_DEFINITION:
+      case InferenceRule::GENERAL_SPLITTING_COMPONENT:
+        return "definition";
+      default:
+        return "plain";
     }
   }
 
@@ -550,12 +551,12 @@ protected:
     UnitIterator parents= us->getParents();
 
     switch(rule) {
-    case InferenceRule::GENERAL_SPLITTING_COMPONENT:
-      printGeneralSplittingComponent(us);
-      return;
-    case InferenceRule::GENERAL_SPLITTING:
-      printSplitting(us);
-      return;
+      case InferenceRule::GENERAL_SPLITTING_COMPONENT:
+        printGeneralSplittingComponent(us);
+        return;
+      case InferenceRule::GENERAL_SPLITTING:
+        printSplitting(us);
+        return;
     default: ;
     }
 
@@ -582,7 +583,7 @@ protected:
         } else {
 	        axiomName="unknown";
         }
-      }
+        }
       inferenceStr="file("+fileName+","+quoteAxiomName(axiomName)+")";
     }
     else if (!parents.hasNext()) {
@@ -590,9 +591,9 @@ protected:
       if (hasNewSymbols(us)) {
         std::string newSymbOrigin;
         if (
-          rule == InferenceRule::FUNCTION_DEFINITION ||
-          rule == InferenceRule::FOOL_ITE_DEFINITION || rule == InferenceRule::FOOL_LET_DEFINITION ||
-          rule == InferenceRule::FOOL_FORMULA_DEFINITION || rule == InferenceRule::FOOL_MATCH_DEFINITION) {
+            rule == InferenceRule::FUNCTION_DEFINITION ||
+            rule == InferenceRule::FOOL_ITE_DEFINITION || rule == InferenceRule::FOOL_LET_DEFINITION ||
+            rule == InferenceRule::FOOL_FORMULA_DEFINITION || rule == InferenceRule::FOOL_MATCH_DEFINITION) {
           newSymbOrigin = "definition";
         } else {
           newSymbOrigin = "naming";
@@ -651,7 +652,7 @@ protected:
       Unit* comp=parents.next();
       ASS(_is->_splittingNameLiterals.find(comp));
       inferenceStr+=","+tptpDefId(comp);
-    }
+      }
     inferenceStr+="])";
 
     out<<getFofString(tptpUnitId(us), getFormulaString(us), inferenceStr, rule)<<endl;
@@ -1505,23 +1506,51 @@ struct InferenceStore::SMTCheckPrinter
   }
 };
 
+struct InferenceStore::LeanProofPrinter
+    : public InferenceStore::ProofPrinter {
+  LeanProofPrinter(ostream &out, InferenceStore *is)
+      : ProofPrinter(out, is) {}
+
+  void print()
+  {
+    LeanProof::outputLeanPreamble(out);
+    UnitList *inputs = UnitList::empty();
+    for (Unit *u : this->proof) {
+      if (u->inference().rule() == InferenceRule::INPUT) {
+        UnitList::push(u, inputs);
+      }
+      printStep(u);
+    }
+    LeanProof::outputCombinedProofHeader(out, inputs);
+    LeanProof::outputCombinationStep<InferenceStore::ProofPrinter::CompareUnits>(out, this->proof);
+  }
+
+  void printStep(Unit *u)
+  {
+    LeanProof::outputStep(out, u);
+  }
+};
+
 InferenceStore::ProofPrinter* InferenceStore::createProofPrinter(std::ostream& out)
 {
-  switch(env.options->proof()) {
-  case Options::Proof::ON:
-    return new ProofPrinter(out, this);
-  case Options::Proof::SMT2_PROOFCHECK:
-    return new Smt2ProofCheckPrinter(out, this);
-  case Options::Proof::PROOFCHECK:
-    return new ProofCheckPrinter(out, this);
-  case Options::Proof::TPTP:
-    return new TPTPProofPrinter(out, this);
-  case Options::Proof::PROPERTY:
-    return new ProofPropertyPrinter(out,this);
-  case Options::Proof::OFF:
-    return 0;
-  case Shell::Options::Proof::SMTCHECK:
-    return new SMTCheckPrinter(out, this);
+  switch (env.options->proof()) {
+    case Options::Proof::ON:
+      return new ProofPrinter(out, this);
+    case Options::Proof::SMT2_PROOFCHECK:
+      return new Smt2ProofCheckPrinter(out, this);
+    case Options::Proof::PROOFCHECK:
+      return new ProofCheckPrinter(out, this);
+    case Options::Proof::TPTP:
+      return new TPTPProofPrinter(out, this);
+    case Options::Proof::PROPERTY:
+      return new ProofPropertyPrinter(out, this);
+    case Options::Proof::OFF:
+      return 0;
+    case Shell::Options::Proof::SMTCHECK:
+      return new SMTCheckPrinter(out, this);
+    case Shell::Options::Proof::LEANCHECK:
+      std::cout.setf(std::ios::unitbuf);
+      return new LeanProofPrinter(out, this);
   }
   ASSERTION_VIOLATION;
 }
