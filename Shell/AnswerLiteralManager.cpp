@@ -20,13 +20,12 @@
 #include "Lib/StringUtils.hpp"
 
 #include "Kernel/Signature.hpp"
+#include "Kernel/Clause.hpp"
 #include "Kernel/Formula.hpp"
 #include "Kernel/FormulaUnit.hpp"
 #include "Kernel/Inference.hpp"
-#include "Kernel/InferenceStore.hpp"
 #include "Kernel/MainLoop.hpp"
 #include "Kernel/Problem.hpp"
-#include "Kernel/RobSubstitution.hpp"
 #include "Kernel/SortHelper.hpp"
 #include "Kernel/SubstHelper.hpp"
 #include "Kernel/TermIterators.hpp"
@@ -34,10 +33,6 @@
 #include "Kernel/InterpretedLiteralEvaluator.hpp"
 #include "Kernel/TermIterators.hpp"
 
-#include "Indexing/Index.hpp"
-#include "Indexing/LiteralIndexingStructure.hpp"
-
-#include "Shell/Flattening.hpp"
 #include "Shell/Options.hpp"
 
 #include "Parse/TPTP.hpp"
@@ -902,7 +897,7 @@ void SynthesisALManager::printRecursionMappings() {
   }
 }
 
-void SynthesisALManager::registerSkolemSymbols(Term* recTerm, const DHMap<unsigned, Term*>& bindings, const std::vector<Term*>& functionHeadsByConstruction, vector<SkolemTracker>& incompleteTrackers, const VList* us) {
+void SynthesisALManager::registerSkolemSymbols(Term* recTerm, const Substitution& subst, const std::vector<Term*>& functionHeadsByConstruction, vector<SkolemTracker>& incompleteTrackers, const VList* us) {
   unsigned recFnId = recTerm->functor();
   unsigned ctorNumber = recTerm->arity()-1;
   ASS_EQ(ctorNumber, VList::length(us));
@@ -918,7 +913,7 @@ void SynthesisALManager::registerSkolemSymbols(Term* recTerm, const DHMap<unsign
   unsigned i = 0;
   while (vit.hasNext()) {
     unsigned v = vit.next();
-    bool found = false;
+    DEBUG_CODE(bool found = false;)
     for (unsigned j = 0; j < ctorNumber; ++j) {
       TermList& arg = *(recTerm->nthArgument(j));
       ASS(arg.isVar());
@@ -926,7 +921,7 @@ void SynthesisALManager::registerSkolemSymbols(Term* recTerm, const DHMap<unsign
         ctorOrder[ctorNumber-i-1] = j;
         functionHeads[j] = functionHeadsByConstruction[ctorNumber-i-1];
         ++i;
-        found = true;
+        DEBUG_CODE(found = true;)
         break;
       }
     }
@@ -941,7 +936,7 @@ void SynthesisALManager::registerSkolemSymbols(Term* recTerm, const DHMap<unsign
     ASS_EQ(st.binding.second, nullptr);
     ASS_EQ(st.recFnId, 0);
     const unsigned var = st.binding.first;
-    st.binding.second = bindings.get(var);
+    st.binding.second = subst.apply(var).term();
     st.recFnId = recFnId;
     st.constructorId = ctorOrder[st.constructorId];
     SkolemTracker* stp;

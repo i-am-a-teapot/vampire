@@ -58,7 +58,6 @@ Signature::Symbol::Symbol(const std::string& nm, unsigned arity, bool interprete
     _skolem(0),
     _skipCongruence(0),
     _tuple(0),
-    _letBound(0),
     _prox(Proxy::NOT_PROXY),
     _deBruijnIndex(-1)
 {
@@ -236,7 +235,6 @@ Signature::Signature ():
     _preds(32),
     _typeCons(32),
     _nextFreshSymbolNumber(0),
-    _skolemFunctionCount(0),
     _distinctGroupsAddedTo(false),
     _strings(0),
     _integers(0),
@@ -248,6 +246,7 @@ Signature::Signature ():
     _lamFun(UINT_MAX),
     _choiceFun(UINT_MAX),
     _placeholderFun(UINT_MAX),
+    _defPred(UINT_MAX),
     _termAlgebras()
 {
   ALWAYS(createDistinctGroup() == STRING_DISTINCT_GROUP);
@@ -591,6 +590,17 @@ unsigned Signature::getDiff() {
   return diff;
 }
 
+unsigned Signature::getDefPred()
+{
+  bool added = false;
+  unsigned def = addPredicate(":=", 3, added);
+  if (added) {
+    _defPred = def;
+    getPredicate(def)->setType(
+      OperatorType::getPredicateType({ TermList::var(0), TermList::var(0) }, /*taArity=*/ 1));
+  }
+  return def;
+}
 
 unsigned Signature::getFnDef(unsigned fn)
 {
@@ -884,11 +894,6 @@ unsigned Signature::addSkolemFunction (unsigned arity, const char* suffix)
   unsigned f = addFreshFunction(arity, "sK", suffix);
   Symbol* s = getFunction(f);
   s->markSkolem();
-
-  // Register it as a LaTeX function
-  // theory->registerLaTeXFuncName(f,"\\sigma_{"+Int::toString(_skolemFunctionCount)+"}(a0)");
-  _skolemFunctionCount++;
-
   return f;
 } // addSkolemFunction
 
@@ -901,11 +906,6 @@ unsigned Signature::addSkolemTypeCon (unsigned arity, const char* suffix)
 {
   unsigned tc = addFreshTypeCon(arity, "sK", suffix);
   getTypeCon(tc)->markSkolem();
-
-  // Register it as a LaTeX function
- // theory->registerLaTeXFuncName(f,"\\sigma_{"+Int::toString(_skolemFunctionCount)+"}(a0)");
-  _skolemFunctionCount++;
-
   return tc;
 } // addSkolemFunction
 
@@ -919,11 +919,6 @@ unsigned Signature::addSkolemPredicate(unsigned arity, const char* suffix)
 {
   unsigned p = addFreshPredicate(arity, "sK", suffix);
   getPredicate(p)->markSkolem();
-
-  // Register it as a LaTeX function
- // theory->registerLaTeXFuncName(f,"\\sigma_{"+Int::toString(_skolemFunctionCount)+"}(a0)");
-  _skolemFunctionCount++;
-
   return p;
 } // addSkolemPredicate
 

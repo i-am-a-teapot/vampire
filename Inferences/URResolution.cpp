@@ -14,18 +14,13 @@
 
 #include "Lib/DArray.hpp"
 #include "Lib/Environment.hpp"
-#include "Lib/Int.hpp"
 #include "Lib/Metaiterators.hpp"
-#include "Lib/PairUtils.hpp"
 #include "Lib/VirtualIterator.hpp"
 
 #include "Kernel/Clause.hpp"
 #include "Kernel/ColorHelper.hpp"
 #include "Kernel/Renaming.hpp"
-#include "Kernel/Unit.hpp"
 #include "Kernel/Inference.hpp"
-#include "Kernel/RobSubstitution.hpp"
-#include "Kernel/SortHelper.hpp"
 
 #include "Indexing/Index.hpp"
 #include "Indexing/LiteralIndex.hpp"
@@ -35,7 +30,6 @@
 
 #include "Shell/AnswerLiteralManager.hpp"
 #include "Shell/Options.hpp"
-#include "Shell/Statistics.hpp"
 
 #include "URResolution.hpp"
 
@@ -350,7 +344,6 @@ void URResolution::processAndGetClauses(Item* itm, unsigned startIdx, ClauseList
   while(itms) {
     Item* itm = ItemList::pop(itms);
     ClauseList::push(itm->generateClause(), acc);
-    env.statistics->urResolution++;
     delete itm;
   }
 }
@@ -378,7 +371,7 @@ void URResolution::doBackwardInferences(Clause* cl, ClauseList*& acc)
     }
 
     Item* itm = new Item(ucl, _selectedOnly, *this, _emptyClauseOnly);
-    unsigned pos;
+    unsigned pos = UINT_MAX;
     if (!itm->_ansLit) {
       pos = ucl->getLiteralPosition(unif.data->literal);
     } else {

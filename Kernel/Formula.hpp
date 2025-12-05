@@ -20,8 +20,6 @@
 
 #include "Forwards.hpp"
 
-#include "Lib/List.hpp"
-
 #include "Kernel/Signature.hpp"
 #include "Kernel/SortHelper.hpp"
 
@@ -97,8 +95,8 @@ public:
   static Formula* falseFormula();
 
   static Formula* createITE(Formula* condition, Formula* thenArg, Formula* elseArg);
-  static Formula* createLet(unsigned functor, VList* variables, TermList body, Formula* contents);
-  static Formula* createLet(unsigned predicate, VList* variables, Formula* body, Formula* contents);
+  static Formula* createLet(Formula* binder, Formula* body);
+  static Formula* createDefinition(Term* lhs, TermList rhs, VList* uVars = VList::empty());
 
 
   // use allocator to (de)allocate objects of this class
@@ -146,11 +144,13 @@ class AtomicFormula
   : public Formula
 {
 public:
-  /** building atomic formula from a literal */
-  explicit AtomicFormula (Literal* lit)
+  /** building atomic formula from a literal
+   * */
+  explicit AtomicFormula (Literal* lit, bool flipForPrinting = false)
     : Formula(LITERAL),
-      _literal(lit)
-  {}
+      flipForPrinting(flipForPrinting),
+      _literal(lit) {}
+
   /** Return the literal of this formula */
   const Literal* getLiteral() const { return _literal; }
   /** Return the literal of this formula */
@@ -164,6 +164,10 @@ public:
 
   // use allocator to (de)allocate objects of this class
   USE_ALLOCATOR(AtomicFormula);
+
+  /** if `_literal` was an input equation and was flipped during parsing,
+   * we should print it in the original orientation -- see TermSharing */
+  bool flipForPrinting = false;
 protected:
   /** The literal of this formula */
   Literal* _literal;
@@ -332,10 +336,10 @@ class BoolTermFormula
     : Formula(BOOL_TERM),
       _ts(ts)
   {
-    // only boolean terms in formula context are expected here
-    ASS_REP(ts.isVar() || ts.term()->isITE() || ts.term()->isLet() ||
-            ts.term()->isTupleLet() || ts.term()->isMatch() ||
-            SortHelper::getResultSort(ts.term()) == AtomicSort::boolSort(), ts.toString());
+    // only boolean terms in formula context that are not formulas are expected here
+    ASS_REP(ts.isVar() ||
+            (!ts.term()->isSpecial() && SortHelper::getResultSort(ts.term()) == AtomicSort::boolSort()) ||
+            (ts.term()->isSpecial() && !ts.term()->isFormula() && ts.term()->getSpecialData()->getSort() == AtomicSort::boolSort()), ts.toString());
   }
 
   static Formula* create(TermList ts);

@@ -14,7 +14,6 @@
 
 #include "Kernel/Theory.hpp"
 #include "Lib/Allocator.hpp"
-#include "Lib/DHSet.hpp"
 #include "Lib/Environment.hpp"
 #include "Lib/Int.hpp"
 #include "Lib/ScopedPtr.hpp"
@@ -23,9 +22,7 @@
 #include "Lib/StringUtils.hpp"
 #include "Lib/ScopedPtr.hpp"
 
-#include "Shell/LaTeX.hpp"
 #include "Shell/Options.hpp"
-#include "Shell/Statistics.hpp"
 #include "Shell/UIHelper.hpp"
 #include "Shell/SMTCheck.hpp"
 #include "Shell/LeanProof.hpp"
@@ -43,7 +40,6 @@
 #include "Term.hpp"
 #include "TermIterators.hpp"
 #include "SortHelper.hpp"
-#include "Kernel/NumTraits.hpp"
 
 #include "InferenceStore.hpp"
 
@@ -230,8 +226,14 @@ struct InferenceStore::ProofPrinter
 
   virtual void print()
   {
-    for(Unit *u : proof)
+    for(Unit *u : proof) {
+      SATClause *sat = u->inference().satPremise();
+      if(sat)
+        for(SATClause *scl : topological_sort(sat))
+          printSATStep(scl);
+
       printStep(u);
+    }
   }
 
 protected:
@@ -286,14 +288,53 @@ protected:
     }
   }
 
+  virtual void printSATStep(SATClause *cl) {
+    out << *cl << '\n';
+  }
+
   InferenceStore *_is = nullptr;
   ostream &out;
   bool outputAxiomNames;
 
 protected:
+  struct CompareSATClauses {
+    bool operator()(SATClause *l, SATClause *r) const { return l->number < r->number; }
+  };
+
   struct CompareUnits {
     bool operator()(Unit *l, Unit *r) const { return l->number() < r->number(); }
   };
+
+  // produce a topological sort of the SAT proof starting at `root`
+  std::set<SATClause *, CompareSATClauses> topological_sort(SATClause *root) {
+    // things inserted in here will be topologically sorted,
+    // because it's an ordered set and the clauses are numbered
+    std::set<SATClause *, CompareSATClauses> topological;
+
+    // compute closure of root and insert into `topological`
+    std::vector<SATClause *> todo = { root };
+    while(!todo.empty()) {
+      SATClause *next = todo.back();
+      todo.pop_back();
+
+      // check if already processed (proofs are DAGs, not trees)
+      auto [_, inserted] = topological.insert(next);
+      if(!inserted)
+        continue;
+
+      // process premise parents
+      SATInference *inference = next->inference();
+      if(inference->getType() != SATInference::InfType::PROP_INF)
+        continue;
+      SATClauseList *parents =
+        static_cast<PropInference *>(inference)->getPremises();
+      for(SATClause *parent : iterTraits(parents->iter()))
+        todo.push_back(parent);
+    }
+
+    return topological;
+  }
+
   std::set<Unit *, CompareUnits> proof;
 };
 
@@ -307,7 +348,7 @@ struct InferenceStore::ProofPropertyPrinter
     last_one = false;
   }
 
-  void print()
+  void print() override
   {
     ProofPrinter::print();
     for(unsigned i=0;i<11;i++){ out << buckets[i] << " ";}
@@ -318,12 +359,12 @@ struct InferenceStore::ProofPropertyPrinter
 
 protected:
 
-  void printStep(Unit* us)
+  void printStep(Unit* us) override
   {
     static unsigned lastP = Unit::getLastParsingNumber();
     static float chunk = lastP / 10.0;
     if(us->number() <= lastP){
-      if(us->number() == lastP){ 
+      if(us->number() == lastP){
         last_one = true;
       }
       unsigned bucket = (unsigned)(us->number() / chunk);
@@ -388,7 +429,7 @@ struct InferenceStore::TPTPProofPrinter
     splitPrefix = Saturation::Splitter::splPrefix;
   }
 
-  void print()
+  void print() override
   {
     //outputSymbolDeclarations also deals with sorts for now
     //UIHelper::outputSortDeclarations(out);
@@ -545,7 +586,7 @@ protected:
     return getNewSymbols(origin, SymbolStack::ConstIterator(syms));
   }
 
-  void printStep(Unit* us)
+  void printStep(Unit* us) override
   {
     InferenceRule rule = us->inference().rule();
     UnitIterator parents= us->getParents();
@@ -615,19 +656,65 @@ protected:
       inferenceStr="inference("+tptpRuleName(rule);
 
       inferenceStr+=",["+statusStr+"],[";
-      bool first=true;
-      while(parents.hasNext()) {
-        Unit* prem=parents.next();
-        if (!first) {
-          inferenceStr+=',';
+      if(rule==InferenceRule::AVATAR_REFUTATION) {
+        SATClause *premise = us->inference().satPremise();
+        ASS(premise)
+        inferenceStr += "s" + Int::toString(premise->number);
+      }
+      else {
+        bool first=true;
+        while(parents.hasNext()) {
+          Unit* prem=parents.next();
+          if (!first) {
+            inferenceStr+=',';
+          }
+          inferenceStr+=tptpUnitId(prem);
+          first=false;
         }
-        inferenceStr+=tptpUnitId(prem);
-        first=false;
       }
       inferenceStr+="])";
     }
 
     out<<getFofString(tptpUnitId(us), formulaStr, inferenceStr, rule, us->inputType())<<endl;
+  }
+
+  void printSATStep(SATClause *cl) override {
+    out << "cnf(s" << cl->number << ", plain, ";
+    if(cl->isEmpty())
+      out << "$false";
+    else {
+      bool first = true;
+      for(SATLiteral l : iterTraits(cl->iter())) {
+        if(!first)
+          out << " | ";
+        first = false;
+        out << Saturation::Splitter::getFormulaStringFromLiteral(l);
+      }
+    }
+
+    out << ", inference(";
+    auto inference = cl->inference();
+    switch(inference->getType()) {
+    case SAT::SATInference::PROP_INF: {
+      out << "rat,[],[";
+      bool first = true;
+      SATClauseList *parents =
+        static_cast<PropInference *>(inference)->getPremises();
+      for(SATClause *parent : iterTraits(parents->iter())) {
+        if(!first)
+          out << ",";
+        first = false;
+        out << 's' << parent->number;
+      }
+      break;
+    }
+    case SAT::SATInference::FO_CONVERSION:
+      out
+        << "sat_conversion,[],[f"
+        << static_cast<FOConversionInference *>(inference)->getOrigin()->number();
+      break;
+    }
+    out << "])).\n";
   }
 
   void printSplitting(Unit* us)
@@ -733,7 +820,7 @@ struct InferenceStore::ProofCheckPrinter
   : ProofPrinter(out, is) {}
 
 protected:
-  void printStep(Unit* cs)
+  void printStep(Unit* cs) override
   {
     InferenceRule rule = cs->inference().rule();
     UnitIterator parents= cs->getParents();
@@ -763,13 +850,14 @@ protected:
     out << "%#\n";
   }
 
-  bool hideProofStep(InferenceRule rule)
+  bool hideProofStep(InferenceRule rule) override
   {
     switch(rule) {
     case InferenceRule::INPUT:
     case InferenceRule::INEQUALITY_SPLITTING_NAME_INTRODUCTION:
     case InferenceRule::INEQUALITY_SPLITTING:
     case InferenceRule::SKOLEMIZE:
+    case InferenceRule::SKOLEM_SYMBOL_INTRODUCTION:
     case InferenceRule::EQUALITY_PROXY_REPLACEMENT:
     case InferenceRule::EQUALITY_PROXY_AXIOM1:
     case InferenceRule::EQUALITY_PROXY_AXIOM2:
@@ -782,11 +870,11 @@ protected:
     case InferenceRule::AVATAR_DEFINITION:
     case InferenceRule::AVATAR_COMPONENT:
     case InferenceRule::AVATAR_REFUTATION:
+    case InferenceRule::AVATAR_REFUTATION_SMT:
     case InferenceRule::AVATAR_SPLIT_CLAUSE:
     case InferenceRule::AVATAR_CONTRADICTION_CLAUSE:
     case InferenceRule::FOOL_ELIMINATION:
     case InferenceRule::BOOLEAN_TERM_ENCODING:
-    case InferenceRule::CHOICE_AXIOM:
     case InferenceRule::PREDICATE_DEFINITION:
       return true;
     default:
@@ -794,7 +882,7 @@ protected:
     }
   }
 
-  void print()
+  void print() override
   {
     ProofPrinter::print();
     out << "%#\n";
@@ -1181,23 +1269,14 @@ protected:
       switch(f) {
         case SpecialFunctor::FORMULA: outputFormula(out, sd->getFormula()); return;
         case SpecialFunctor::LET: {
-          out << "(let ((";
-          VList* variables = sd->getVariables();
-          if (VList::isNonEmpty(variables)) 
+          auto binding = sd->getLetBinding();
+          if (binding->connective() != Connective::LITERAL)
             throw UserErrorException("bindings with variables are not supperted in smt2 proofcheck");
 
-          auto binding = sd->getBinding();
-          bool isPredicate = binding.isTerm() && binding.term()->isBoolean();
-
-          out << "?";
-          if (isPredicate) {
-            outputPredicateName(out, sd->getFunctor());
-          } else {
-            outputFunctionName(out, sd->getFunctor());
-          }
-          out << " ";
-          outputTerm(out, binding);
+          out << "(let ((";
+          outputFormula(out, binding);
           out << "))";
+
           ASS_EQ(t->numTermArguments(), 1)
           outputTerm(out, t->termArg(0));
           out << ")";
@@ -1206,21 +1285,16 @@ protected:
 
         case SpecialFunctor::ITE: {
           out << "(ite ";
-          outputFormula(out, sd->getCondition());
+          outputFormula(out, sd->getITECondition());
           ASS_EQ(t->numTermArguments(), 2)
           outputTerm(out, t->termArg(0));
           outputTerm(out, t->termArg(1));
           out << ")";
           return;
         }
-        case SpecialFunctor::TUPLE: 
-            throw UserErrorException("tuples are not supperted in smt2 proofcheck");
 
         case SpecialFunctor::LAMBDA:
             throw UserErrorException("lambdas are not supperted in smt2 proofcheck");
-
-        case SpecialFunctor::LET_TUPLE: 
-            throw UserErrorException("tuples lets are not supperted in smt2 proofcheck");
 
         case SpecialFunctor::MATCH:
             throw UserErrorException("&match are not supperted in smt2 proofcheck");
@@ -1419,7 +1493,7 @@ protected:
     }
   }
 
-  void printStep(Unit* concl)
+  void printStep(Unit* concl) override
   {
     auto prems = iterTraits(concl->getParents());
  
@@ -1448,13 +1522,14 @@ protected:
   }
 
 
-  bool hideProofStep(InferenceRule rule)
+  bool hideProofStep(InferenceRule rule) override
   {
     switch(rule) {
     case InferenceRule::INPUT:
     case InferenceRule::INEQUALITY_SPLITTING_NAME_INTRODUCTION:
     case InferenceRule::INEQUALITY_SPLITTING:
     case InferenceRule::SKOLEMIZE:
+    case InferenceRule::SKOLEM_SYMBOL_INTRODUCTION:
     case InferenceRule::EQUALITY_PROXY_REPLACEMENT:
     case InferenceRule::EQUALITY_PROXY_AXIOM1:
     case InferenceRule::EQUALITY_PROXY_AXIOM2:
@@ -1473,7 +1548,6 @@ protected:
     case InferenceRule::FOOL_ITE_DEFINITION:
     case InferenceRule::FOOL_ELIMINATION:
     case InferenceRule::BOOLEAN_TERM_ENCODING:
-    case InferenceRule::CHOICE_AXIOM:
     case InferenceRule::PREDICATE_DEFINITION:
       return true;
     default:
@@ -1481,7 +1555,7 @@ protected:
     }
   }
 
-  void print()
+  void print() override
   {
     ProofPrinter::print();
     out << "%#\n";
@@ -1494,13 +1568,13 @@ struct InferenceStore::SMTCheckPrinter
   SMTCheckPrinter(ostream& out, InferenceStore* is)
   : ProofPrinter(out, is) {}
 
-  void print()
+  void print() override
   {
     SMTCheck::outputSignature(out);
     ProofPrinter::print();
   }
 
-  void printStep(Unit* u)
+  void printStep(Unit* u) override
   {
     SMTCheck::outputStep(out, u);
   }

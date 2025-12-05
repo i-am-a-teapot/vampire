@@ -16,7 +16,7 @@
 
 #include "Debug/RuntimeStatistics.hpp"
 
-#include "Lib/Allocator.hpp"
+#include "Kernel/HOL/HOL.hpp"
 #include "Lib/DHMap.hpp"
 #include "Lib/Int.hpp"
 #include "Lib/Environment.hpp"
@@ -30,12 +30,9 @@
 #include "Kernel/SubformulaIterator.hpp"
 #include "Kernel/FormulaVarIterator.hpp"
 #include "Kernel/Term.hpp"
-#include "Kernel/ApplicativeHelper.hpp"
 
 #include "Shell/Statistics.hpp"
 #include "Shell/Options.hpp"
-
-#include "Indexing/TermSharing.hpp"
 
 #include "Naming.hpp"
 
@@ -1138,8 +1135,7 @@ Literal* Naming::getDefinitionLiteral(Formula* f, VList* freeVars) {
     sym->markSkipCongruence();
     sym->setType(OperatorType::getConstantsType(sort, typeArgArity)); 
     TermList head = TermList(Term::create(fun, typeVars.size(), typeVars.begin()));
-    TermList t = ApplicativeHelper::createAppTerm(
-                 SortHelper::getResultSort(head.term()), head, termVars);
+    TermList t = HOL::create::app(head, termVars);
     return  Literal::createEquality(true, TermList(t), TermList(Term::foolTrue()), AtomicSort::boolSort());  
   }
 }

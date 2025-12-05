@@ -200,7 +200,6 @@ VK_OBJ= Kernel/Clause.o\
         Kernel/UnificationWithAbstraction.o\
         Kernel/Signature.o\
         Kernel/SortHelper.o\
-        Kernel/ApplicativeHelper.o\
         Kernel/OperatorType.o\
         Kernel/SubformulaIterator.o\
         Kernel/Term.o\
@@ -218,6 +217,12 @@ VK_OBJ= Kernel/Clause.o\
         Kernel/HOL/HOL.o\
         Kernel/HOL/Create.o\
         Kernel/HOL/Convert.o\
+        Kernel/HOL/Reduce.o\
+        Kernel/HOL/BetaNormaliser.o\
+        Kernel/HOL/RedexReducer.o\
+        Kernel/HOL/TermShifter.o\
+        Kernel/HOL/EtaNormaliser.o\
+        Kernel/HOL/SubtermReplacer.o\
         Kernel/InterpretedLiteralEvaluator.o\
         Kernel/Rebalancing.o\
         Kernel/Rebalancing/Inverters.o\
@@ -315,7 +320,8 @@ VSAT_OBJ=SAT/MinimizingSolver.o\
 	 SAT/CadicalInterfacing.o\
 	 SAT/Z3Interfacing.o\
 	 SAT/Z3MainLoop.o\
-	 SAT/FallbackSolverWrapper.o
+	 SAT/FallbackSolverWrapper.o\
+	 SAT/ProofProducingSATSolver.o
 
 VST_OBJ= Saturation/AWPassiveClauseContainers.o\
          Saturation/PredicateSplitPassiveClauseContainers.o\
@@ -351,7 +357,6 @@ VS_OBJ = Shell/AnswerLiteralManager.o\
          Shell/InterpolantMinimizer.o\
          Shell/Interpolants.o\
          Shell/InterpretedNormalizer.o\
-         Shell/LaTeX.o\
          Shell/LispLexer.o\
          Shell/LispParser.o\
          Shell/Naming.o\
@@ -402,7 +407,6 @@ VFMB_OBJ = FMB/ClauseFlattening.o\
            FMB/SortInference.o\
 	   FMB/Monotonicity.o\
 	   FMB/FunctionRelationshipInference.o\
-	   FMB/FiniteModel.o\
 	   FMB/FiniteModelMultiSorted.o\
            FMB/FiniteModelBuilder.o
 
@@ -427,8 +431,7 @@ LIB_DEP = Indexing/TermSharing.o\
 	  Kernel/InferenceStore.o\
 	  Kernel/Problem.o\
 	  Kernel/SortHelper.o\
-      Kernel/ApplicativeHelper.o\
-      Kernel/OperatorType.o\
+	  Kernel/OperatorType.o\
 	  Kernel/Signature.o\
 	  Kernel/SubformulaIterator.o\
 	  Kernel/Term.o\
