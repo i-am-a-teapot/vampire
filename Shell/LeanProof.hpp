@@ -24,6 +24,7 @@ namespace LeanProof {
 bool isUncheckedStep(InferenceRule rule);
 void outputLeanPreamble(std::ostream &out);
 void outputCombinedProofHeader(std::ostream &out, Kernel::UnitList *inputs);
+void outputProofInputs(std::ostream &out, Kernel::UnitList *inputs);
 
 
 
@@ -50,6 +51,7 @@ void outputCombinationStep(std::ostream &out, const std::set<Kernel::Unit *, Com
 }
 
 void outputStep(std::ostream &out, Kernel::Unit *u);
+void outputStepIfAxiom(std::ostream &out, Unit *u);
 
 }
 }

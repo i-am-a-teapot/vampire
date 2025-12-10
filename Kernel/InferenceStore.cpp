@@ -1593,10 +1593,19 @@ struct InferenceStore::LeanProofPrinter
       if (u->inference().rule() == InferenceRule::INPUT) {
         UnitList::push(u, inputs);
       }
-      printStep(u);
+      LeanProof::outputStepIfAxiom(out, u);
     }
-    LeanProof::outputCombinedProofHeader(out, inputs);
-    LeanProof::outputCombinationStep<InferenceStore::ProofPrinter::CompareUnits>(out, this->proof);
+    inputs = UnitList::reverse(UnitList::copy(inputs));
+    LeanProof::outputProofInputs(out, inputs);
+    unsigned int lastStepNum = 0;
+    for (Unit *u : this->proof) {
+      printStep(u);
+      lastStepNum = u->number();
+    }
+    
+    out << " exact step" << lastStepNum << "\n";
+    //LeanProof::outputCombinedProofHeader(out, inputs);
+    //LeanProof::outputCombinationStep<InferenceStore::ProofPrinter::CompareUnits>(out, this->proof);
   }
 
   void printStep(Unit *u)

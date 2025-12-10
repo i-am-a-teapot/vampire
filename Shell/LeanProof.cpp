@@ -506,10 +506,11 @@ void printArgs(std::ostream &out, Args args, bool recurse = false)
     }
     if (!printed) {
       current = term->termArgs();
-      out << "(" << name;
+      out << "(" << name << " ";
       while (!current->isEmpty()) {
         printArgs(out, Args{current, args.conclSorts, args.otherSorts}, recurse);
         current = current->next();
+        out << (current->isEmpty() ? "" : " ");
       }
       out << ")";
     }
@@ -629,6 +630,8 @@ struct DoRobSubst {
 
 void outputSortsWithQuantor(std::ostream &out, SortMap &sorts, std::string quantor = "∀")
 {
+  if(sorts.isEmpty())
+    return;
   auto it = sorts.items();
   std::map<TermList, std::vector<unsigned>> varsBySort;
   while (it.hasNext()) {
@@ -827,7 +830,7 @@ static void axiom(std::ostream &out, SortMap &conclSorts, Clause *concl)
   outputConclusion(out, conclSorts, concl->asClause());
 }
 
-static void trivial(std::ostream &out, SortMap &conclSorts, Clause *concl)
+static void trivial(std::ostream &out, SortMap &conclSorts, Clause *concl, std::string tactic = "aesop")
 {
   UnitIterator parents = concl->getParents();
   while (parents.hasNext()) {
@@ -837,7 +840,7 @@ static void trivial(std::ostream &out, SortMap &conclSorts, Clause *concl)
     out << " → ";
   }
   outputConclusion(out, conclSorts, concl->asClause());
-  out << " := by\n aesop\n";
+  out << " := by\n  " << tactic << "\n";
 }
 
 static void resolution(std::ostream &out, SortMap &conclSorts, Clause *concl)
@@ -864,17 +867,18 @@ static void resolution(std::ostream &out, SortMap &conclSorts, Clause *concl)
   outputPremise(out, conclSorts, right->asClause());
   out << " → ";
   outputConclusion(out, conclSorts, concl->asClause());
-  out << " := by\n intros h1 h2 ";
+  out << " := by";
+  out << "\n  intros h1 h2 ";
   outputVariables(out, conclSorts.domain(), conclSorts, conclSorts);
-  out << "\n have l := (h1 ";
+  out << "\n  have l := (h1 ";
   SortMap varSorts;
   SortHelper::collectVariableSorts(left,varSorts);
   outputVariables(out, left->getVariableIterator(), conclSorts, varSorts, DoRobSubst<0>(subst));
-  out << ")\n have r := (h2 ";
+  out << ")\n  have r := (h2 ";
   varSorts.reset();
   SortHelper::collectVariableSorts(right,varSorts);
   outputVariables(out,right->getVariableIterator(),conclSorts, varSorts,DoRobSubst<1>(subst));
-  out << ")\n exact resolve l r\n";
+  out << ")\n  exact resolve l r\n";
 }
 
 static void subsumptionResolution(std::ostream &out, SortMap &conclSorts, Clause *concl)
@@ -897,15 +901,15 @@ static void subsumptionResolution(std::ostream &out, SortMap &conclSorts, Clause
   out << " → ";
   outputConclusion(out, conclSorts, concl->asClause());
 
-  out << " := by\n intros h1 h2 ";
+  out << " := by\n  intros h1 h2 ";
   outputVariables(out, conclSorts.domain(), conclSorts, conclSorts);
-  out << "\n have l := (h1 ";
+  out << "\n  have l := (h1 ";
   sorts = SortMap();
   SortHelper::collectVariableSorts(left, sorts);
   outputVariables(out, left->getVariableIterator(), conclSorts, sorts);
-  out << ")\n have r := (h2 ";
+  out << ")\n  have r := (h2 ";
   outputVariables(out, right->getVariableIterator(), conclSorts, sorts, DoSubst(subst));
-  out << ")\n exact resolve l r\n";
+  out << ")\n  exact resolve l r\n";
 }
 
 static void factoring(std::ostream &out, SortMap &conclSorts, Clause *concl)
@@ -984,17 +988,17 @@ static void superposition(std::ostream &out, SortMap &conclSorts, Clause *concl)
   outputPremise(out, conclSorts, right->asClause());
   out << " → ";
   outputConclusion(out, conclSorts, concl->asClause());
-  out << " := by\n intros h1 h2 ";
+  out << " := by\n  intros h1 h2 ";
   outputVariables(out, conclSorts.domain(), conclSorts, conclSorts);
-  out << "\n have l := (h1 ";
+  out << "\n  have l := (h1 ";
   SortMap varSorts;
   SortHelper::collectVariableSorts(left, varSorts);
   outputVariables(out, left->getVariableIterator(), conclSorts, varSorts, DoRobSubst<0>(subst));
-  out << ")\n have r := (h2 ";
+  out << ")\n  have r := (h2 ";
   varSorts.reset();
   SortHelper::collectVariableSorts(right, varSorts);
   outputVariables(out, right->getVariableIterator(), conclSorts, varSorts, DoRobSubst<1>(subst));
-  out << ")\n first | exact superpose l r | exact superpose r l\n";
+  out << ")\n  first | exact superpose l r | exact superpose r l\n";
 }
 
 // check whether `demodulator` l = r rewrites left-to-right in the context of C[t] -> C[s]
@@ -1037,6 +1041,19 @@ static void demodulation(std::ostream &out, SortMap &conclSorts, Clause *concl)
   outputPremise(out, conclSorts, right->asClause());
   out << " → ";
   outputConclusion(out, conclSorts, concl->asClause());
+
+  out << " := by\n  intros h1 h2 ";
+  outputVariables(out, conclSorts.domain(), conclSorts, conclSorts);
+  out << "\n  have l := (h1 ";
+  SortMap varSorts;
+  SortHelper::collectVariableSorts(left, varSorts);
+  outputVariables(out, left->getVariableIterator(), conclSorts, varSorts);
+  out << ")\n  have r := (h2 ";
+  varSorts.reset();
+  SortHelper::collectVariableSorts(right, varSorts);
+  outputVariables(out, right->getVariableIterator(), conclSorts, varSorts, DoSubst(subst));
+  out << ")\n  first | exact superpose l r | exact superpose r l\n";
+
 }
 
 static void splitClause(std::ostream &out, SortMap &conclSorts, Unit *concl)
@@ -1165,24 +1182,98 @@ static void normalForm(std::ostream &out, SortMap &conclSorts, Unit *u, Kernel::
   // This should be nicer in the future depending on InferenceRule
 }
 
-/*static void skolemize(std::ostream &out, SortMap &conclSorts, Unit *u)
+static void collectUninterpretedSymbols(TermList *terms, std::set<Signature::Symbol*> &symbols) {
+  while(!terms->isEmpty()) {
+    if (!terms->isTerm()) {
+      terms = terms->next();
+      continue;
+    }
+    FunctionName funcName(terms->term());
+    if (!funcName.symbol->interpreted()) {
+      symbols.insert(funcName.symbol);
+    }
+    TermList* termArgs = terms->term()->termArgs();
+    collectUninterpretedSymbols(termArgs, symbols);
+    terms = terms->next();
+  }
+}
+
+
+static void collectUninterpretedSymbols(Formula *f, std::set<Signature::Symbol*> &symbols) {
+  switch(f->connective()) {
+    case LITERAL: {
+      Literal * lit = f->literal();
+      PredicateName name(lit);
+      if (!name.symbol->interpreted()) {
+        symbols.insert(name.symbol);
+      }
+      collectUninterpretedSymbols(lit->args(), symbols);
+      break;
+    }
+    case AND:
+    case OR: {
+      auto args = f->args()->iter();
+      while(args.hasNext()) {
+        collectUninterpretedSymbols(args.next(), symbols);
+      }
+      break;
+    }
+    case IMP:
+    case IFF:
+    case XOR: {
+      collectUninterpretedSymbols(f->left(), symbols);
+      collectUninterpretedSymbols(f->right(), symbols);
+      break;
+    }
+    case NOT: {
+      collectUninterpretedSymbols(f->uarg(), symbols);
+      break;
+    }
+    case FORALL:
+    case EXISTS: {
+      collectUninterpretedSymbols(f->qarg(), symbols);
+      break;
+    }
+    case BOOL_TERM:
+      // TODO
+      ASSERTION_VIOLATION
+      break;
+    case TRUE:
+    case FALSE:
+      break;
+    default:
+      ASSERTION_VIOLATION
+  }
+}
+
+static void skolemize(std::ostream &out, SortMap &conclSorts, Unit *u)
 {
   UnitIterator parents = u->getParents();
-  //Ignore the choice axiom, we use skolem functions directly
+  //The first parent is the original formula
   Unit *parent = parents.next();
-  outputPremiseFormula(out, conclSorts, parent->getFormula());
-  out << " → ";
+  std::set<Signature::Symbol *> parentSymbols;
+  collectUninterpretedSymbols(parent->getFormula(), parentSymbols);
+  //The second parent is the choice axiom
+  ASS(parents.hasNext());
+  Unit *choiceAxiom = parents.next();
+  //we need to determine the skolem constants/functions introduced
+  std::set<Signature::Symbol *> choiceSymbols;
+  collectUninterpretedSymbols(choiceAxiom->getFormula(), choiceSymbols);
+  
 
-  auto formula = u->getFormula();
-  SortMap otherSorts;
-  SortHelper::collectVariableSorts(u, otherSorts);
-  out << "(";
-  printFormula(out, formula, conclSorts, otherSorts);
-  out << ")";
-  out << ":= by\n intro h\n";
-  out << " obtain ⟨x, hw⟩ := h \n";
-  out << " simp_all\n";
-}*/
+  //There should be one new symbol in the difference of sets
+  std::set<Signature::Symbol*> diff;
+  std::set_difference(choiceSymbols.begin(), choiceSymbols.end(), 
+                      parentSymbols.begin(), parentSymbols.end(), 
+                      std::inserter(diff, diff.begin()));
+      
+  out << " rcases step" << parent->number() << " with ⟨ ";
+  for ( auto var: diff){
+    out << FunctionName(var) << " ,"; 
+  }
+  out << " step" << u->number() << "⟩\n";
+  out << " rw [eq_comm] at step" << u->number() << "\n";
+}
 /*
 static void choiceAxiom(std::ostream &out, SortMap &conclSorts, Unit *u)
 {
@@ -1221,13 +1312,13 @@ static void evaluation(std::ostream &out, SortMap &conclSorts, Unit *u)
   out << "(";
   printFormula(out, formula, conclSorts, otherSorts);
   out << ")";
-  out << ":= by\n intros h ";
+  out << ":= by\n  intros h ";
   outputVariables(out, conclSorts.domain(), conclSorts, conclSorts);
-  out << "\n have h1 := h ";
+  out << "\n  have h1 := h ";
   outputVariables(out, otherSorts.domain(), otherSorts, otherSorts);
-  out << "\n field_or_ring\n";
-  out << " field_or_ring at h\n";
-  out << " simp_all\n";
+  out << "\n  norm_num1\n";
+  out << "  norm_num1 at h\n";
+  out << "  simp_all\n";
 }
 
 namespace Shell {
@@ -1236,7 +1327,7 @@ namespace LeanProof {
 bool isUncheckedStep(InferenceRule rule) {
   return
       // can't check the input
-      rule == InferenceRule::INPUT || rule == InferenceRule::NEGATED_CONJECTURE
+      rule == InferenceRule::INPUT
       // can't check distinctness axioms
       || rule == InferenceRule::DISTINCTNESS_AXIOM
       // can't check definition introduction
@@ -1246,7 +1337,7 @@ bool isUncheckedStep(InferenceRule rule) {
 }
 
 void outputCombinedProofHeader(std::ostream &out, Kernel::UnitList *inputs){
-  out << "theorem fullProof : ";
+  out << "have fullProof : ";
   auto iter = inputs->iter();
   while(iter.hasNext()){
     Unit* input = iter.next();
@@ -1257,42 +1348,69 @@ void outputCombinedProofHeader(std::ostream &out, Kernel::UnitList *inputs){
     out << ") → ";
   }
   out << "⊥ := by\n";
-  out << "intros ";
+  out << "  intros ";
   iter = inputs->iter();
   while(iter.hasNext()){
     Unit* input = iter.next();
-    out << "step" << input->number() << " ";
+    out << "inf_s" << input->number() << " ";
   }
   out << "\n";
 }
 
+void outputProofInputs(std::ostream &out, Kernel::UnitList *inputs){
+  auto iter = inputs->iter();
+  out << "theorem proof : ";
+   while(iter.hasNext()){
+    Unit* input = iter.next();
+    SortMap sorts;
+    SortHelper::collectVariableSorts(input, sorts);
+    out << "(";
+    outputPremiseFormula(out, sorts, input->getFormula());
+    out << ")";
+    if(iter.hasNext()){
+      out << " → ";
+    } 
+  }
 
+  //check if proof has a conjecture input
+  bool hasConjecture = false;
+  iter = inputs->iter();
+  while(iter.hasNext()){
+    Unit* input = iter.next();
+    if(input->inputType() == UnitInputType::CONJECTURE){
+      hasConjecture = true;
+      break;
+    }
+  }
+  if(!hasConjecture){
+    out << " → False";
+  }
+  out << " := by\n intros ";
+  Unit* input;
+  iter = inputs->iter();
+  while(iter.hasNext()){
+    input = iter.next();
+    if(input->inputType() != UnitInputType::CONJECTURE){
+      out << "step" << input->number() << " ";
+    } else {
+      break;
+    }
+  }
+  out << "\n";
+}
 
-void outputStep(std::ostream &out, Unit *u)
-{
-  InferenceRule rule = u->inference().rule();
-  if (isUncheckedStep(rule))
-    return;
-
-  out << "\n-- step " << u->number() << " " << ruleName(rule) << "\n";
-
-  std::stringstream preamble;
-
-  bool sorry = false;
-  SortMap conclSorts;
-  SortHelper::collectVariableSorts(u, conclSorts);
-
+bool isAxiom(InferenceRule rule) {
   switch (rule) {
     case InferenceRule::THA_COMMUTATIVITY:
     case InferenceRule::THA_ASSOCIATIVITY:
-    case InferenceRule::THA_RIGHT_IDENTINTY:
-    case InferenceRule::THA_LEFT_IDENTINTY:
+    case InferenceRule::THA_RIGHT_IDENTITY:
+    case InferenceRule::THA_LEFT_IDENTITY:
     case InferenceRule::THA_INVERSE_OP_OP_INVERSES:
     case InferenceRule::THA_INVERSE_OP_UNIT:
     case InferenceRule::THA_INVERSE_ASSOC:
     case InferenceRule::THA_NONREFLEX:
     case InferenceRule::THA_TRANSITIVITY:
-    case InferenceRule::THA_ORDER_TOTALALITY:
+    case InferenceRule::THA_ORDER_TOTALITY:
     case InferenceRule::THA_ORDER_MONOTONICITY:
     case InferenceRule::THA_ALASCA:
     case InferenceRule::THA_PLUS_ONE_GREATER:
@@ -1334,46 +1452,87 @@ void outputStep(std::ostream &out, Unit *u)
     case InferenceRule::TERM_ALGEBRA_INJECTIVITY_AXIOM:
     case InferenceRule::FOOL_AXIOM_TRUE_NEQ_FALSE:
     case InferenceRule::FOOL_AXIOM_ALL_IS_TRUE_OR_FALSE:
-      out << "axiom step" << u->number() << " : ";
-      axiom(out, conclSorts, u->asClause());
-      break;
+      return true;
+    default:
+      return false;
+  }
+}
+
+void outputStepIfAxiom(std::ostream &out, Unit *u){
+  InferenceRule rule = u->inference().rule();
+  if (!isAxiom(rule))
+    return;
+
+  out << "\n-- step " << u->number() << " " << ruleName(rule) << "\n";
+
+  bool sorry = false;
+  SortMap conclSorts;
+  SortHelper::collectVariableSorts(u, conclSorts);
+  out << "axiom step" << u->number() << " : ";
+  axiom(out, conclSorts, u->asClause());
+  out << "\n";
+} 
+
+
+void outputStep(std::ostream &out, Unit *u)
+{
+  InferenceRule rule = u->inference().rule();
+  if (isUncheckedStep(rule))
+    return;
+   if(isAxiom(rule)) {
+    // axioms are handled elsewhere
+    return;
+  }
+  out << "\n-- step " << u->number() << " " << ruleName(rule) << "\n";
+
+  bool sorry = false;
+  SortMap conclSorts;
+  SortHelper::collectVariableSorts(u, conclSorts);
+
+ 
+
+  switch (rule) {
     case InferenceRule::EVALUATION:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       evaluation(out, conclSorts, u);
       break;
-    case InferenceRule::REMOVE_DUPLICATE_LITERALS:
+    case InferenceRule::NEGATED_CONJECTURE:
+      out << " by_contra step" << u->number() << "\n"; 
+      break;
     case InferenceRule::TRIVIAL_INEQUALITY_REMOVAL:
+      out << " have inf_s" << u->number() << " : ";
+      trivial(out, conclSorts, u->asClause(),
+        "intro h1\n  repeat rewrite [neg_eq_false] at h1\n  repeat rewrite [or_false] at h1\n  exact h1");
+      break;
+    case InferenceRule::REMOVE_DUPLICATE_LITERALS:
     case InferenceRule::ALASCA_NORMALIZATION:
-      // TODO below are trivial but would have to (declare-datatypes ...)
-      // case InferenceRule::TERM_ALGEBRA_DISTINCTNESS:
-      // case InferenceRule::TERM_ALGEBRA_INJECTIVITY_SIMPLIFYING:
-      // case InferenceRule::TERM_ALGEBRA_INJECTIVITY_GENERATING:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       trivial(out, conclSorts, u->asClause());
       break;
     case InferenceRule::RESOLUTION:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       resolution(out, conclSorts, u->asClause());
       break;
-    case InferenceRule::SUBSUMPTION_RESOLUTION:
-      out << "theorem step" << u->number() << " : ";
+    case InferenceRule::FORWARD_SUBSUMPTION_RESOLUTION:
+    case InferenceRule::BACKWARD_SUBSUMPTION_RESOLUTION:
+      out << " have inf_s" << u->number() << " : ";
       subsumptionResolution(out, conclSorts, u->asClause());
       break;
     case InferenceRule::FACTORING:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       factoring(out, conclSorts, u->asClause());
       break;
     case InferenceRule::EQUALITY_RESOLUTION:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       equalityResolution(out, conclSorts, u->asClause());
       break;
     case InferenceRule::SUPERPOSITION:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       superposition(out, conclSorts, u->asClause());
       break;
     case InferenceRule::FORWARD_DEMODULATION:
     case InferenceRule::BACKWARD_DEMODULATION:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       demodulation(out, conclSorts, u->asClause());
       break;
     case InferenceRule::AVATAR_SPLIT_CLAUSE:
@@ -1393,20 +1552,23 @@ void outputStep(std::ostream &out, Unit *u)
     case InferenceRule::FLATTEN:
     case InferenceRule::CLAUSIFY:
     case InferenceRule::THEORY_NORMALIZATION:
-      out << "theorem step" << u->number() << " : ";
+      out << " have inf_s" << u->number() << " : ";
       normalForm(out, conclSorts, u, rule);
       break;
-    case InferenceRule::CHOICE_AXIOM:
-      //out << "theorem step" << u->number() << " : ";
-      //choiceAxiom(out, conclSorts, u);
-      break;
     case InferenceRule::SKOLEMIZE:
-      //out << "theorem step" << u->number() << " : ";
-      //skolemize(out, conclSorts, u);
+      skolemize(out, conclSorts, u);
       break;
     default:
       sorry = true;
-      out << "(echo \"sorry: " << ruleName(rule) << "\")\n";
+      //out << "(echo \"sorry: " << ruleName(rule) << "\")\n";
+  }
+  if (rule != InferenceRule::SKOLEMIZE && rule != InferenceRule::NEGATED_CONJECTURE && !sorry){
+    out << " have step" << u->number() << " := inf_s" << u->number();
+    for (auto parents = u->getParents(); parents.hasNext(); ) {
+      Unit *parent = parents.next();
+      out << " step" << parent->number();
+    }
+    out << "\n";
   }
 }
 
@@ -1422,7 +1584,10 @@ void outputLeanPreamble(std::ostream &out)
   "set_option linter.style.longLine false\n"
   "def inhabit_Int : Int := default\n"
   "def inhabit_Real : Real := default\n"
-  "def inhabit_Bool : Bool := default\n\n"
+  "def inhabit_Bool : Bool := default\n"
+  "inductive iota where\n"
+  "| mk\n"
+  "deriving Inhabited\n\n";
   ;
   Signature &sig = *env.signature;
   for(unsigned i = Signature::FIRST_USER_CON; i < sig.typeCons(); i++) {
@@ -1450,6 +1615,9 @@ void outputLeanPreamble(std::ostream &out)
     out << " : (";
     for (unsigned i = 0; i < type->arity(); i++)
       out << (i == 0 ? "" : " → ") << Sort {type->arg(i)};
+    if(type->arity() > 0){
+      out << " → ";
+    }
     out << Sort {range} << ") )\n";
   }
 
